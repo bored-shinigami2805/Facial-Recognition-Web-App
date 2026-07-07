@@ -1,4 +1,3 @@
-<!-- The block below is Hugging Face Spaces config; it's ignored by GitHub. -->
 ---
 title: FaceMatch
 emoji: 🙂
