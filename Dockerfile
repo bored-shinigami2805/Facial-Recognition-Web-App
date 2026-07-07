@@ -5,8 +5,9 @@
 FROM python:3.13-slim
 
 # System libraries needed by opencv-python-headless / onnxruntime / scipy.
+# (OpenCV 5's headless build still links libxcb/libSM/libXext at import time.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libglib2.0-0 libgomp1 \
+        libglib2.0-0 libgomp1 libxcb1 libxext6 libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Run as a non-root user (recommended by Hugging Face Spaces).
