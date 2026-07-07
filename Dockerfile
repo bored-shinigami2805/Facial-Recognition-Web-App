@@ -1,7 +1,8 @@
 # Dockerfile for deploying FaceMatch to Hugging Face Spaces (Docker SDK).
 # HF Spaces run the container as a non-root user (uid 1000) and expect the app
 # to listen on port 7860.
-FROM python:3.11-slim
+# Python 3.13 to match the pinned dependency versions (numpy 2.5.x needs >=3.12).
+FROM python:3.13-slim
 
 # System libraries needed by opencv-python-headless / onnxruntime / scipy.
 RUN apt-get update && apt-get install -y --no-install-recommends \
