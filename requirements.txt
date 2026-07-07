@@ -1,0 +1,21 @@
+# Pinned to the versions that installed cleanly on Python 3.13 (Windows, CPU).
+# InsightFace pulls in a few heavy transitive deps (onnx, scikit-image, scipy)
+# but those resolve automatically - only the direct ones are listed here.
+
+fastapi==0.139.0
+uvicorn[standard]==0.50.0
+python-multipart==0.0.32
+
+# Face pipeline (InsightFace = RetinaFace detector + ArcFace 512-d embeddings)
+insightface==1.0.1
+onnxruntime==1.27.0
+opencv-python-headless==5.0.0.93
+numpy==2.5.1
+Pillow==12.3.0
+
+# Storage
+SQLAlchemy==2.0.51
+
+# Tests
+pytest==9.1.1
+httpx==0.28.1

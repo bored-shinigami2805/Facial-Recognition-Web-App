@@ -1,0 +1,23 @@
+# virtual env
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# app data: sqlite db, stored thumbnails, runtime config
+data/
+
+# downloaded sample/test images (kept out of the repo)
+samples/
+
+# InsightFace downloads its models here on first run
+.insightface/
+
+# editor / tooling junk
+.vscode/
+.idea/
+.DS_Store
+.claude/
