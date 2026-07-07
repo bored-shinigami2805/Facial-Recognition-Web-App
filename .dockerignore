@@ -1,0 +1,11 @@
+# Keep the build context small — don't ship the local venv, data or git history.
+.venv/
+venv/
+data/
+samples/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.gitignore
+.claude/

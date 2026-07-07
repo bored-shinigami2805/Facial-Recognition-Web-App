@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import base64
 import io
+import os
+import threading
 import uuid
 from pathlib import Path
 
@@ -27,6 +29,11 @@ from . import config, db, face_engine, schemas
 async def lifespan(app: FastAPI):
     # create the SQLite tables on startup
     db.init_db()
+    # On the hosted demo we auto-enroll a sample face in the background so the
+    # gallery isn't empty on first visit. Gated behind an env var so it never
+    # runs locally or during tests.
+    if os.getenv("FACEMATCH_SEED_DEMO") == "1":
+        threading.Thread(target=_seed_demo_people, daemon=True).start()
     yield
 
 
@@ -88,6 +95,44 @@ def _read_upload(upload: UploadFile) -> bytes:
     if not data:
         raise HTTPException(400, f"File '{upload.filename}' is empty.")
     return data
+
+
+# Which bundled demo photo to auto-enroll on the hosted demo. We only seed
+# Einstein so the "Lincoln" sample still demonstrates an "Unknown" result.
+_DEMO_SEED = {"einstein.jpg": "Albert Einstein"}
+
+
+def _seed_demo_people() -> None:
+    """Enroll the bundled demo face(s) once, so the hosted demo works on first
+    visit. Runs in a background thread (the first detect also downloads the
+    model), no-ops if anyone is already enrolled, and never raises."""
+    try:
+        session = db.SessionLocal()
+        if session.query(db.Person).count() > 0:
+            session.close()
+            return
+        for fname, name in _DEMO_SEED.items():
+            fpath = STATIC_DIR / "demo" / fname
+            if not fpath.exists():
+                continue
+            rgb = face_engine.load_image(fpath.read_bytes())
+            faces = face_engine.detect_faces(rgb)
+            if not faces:
+                continue
+            person = db.Person(name=name)
+            session.add(person)
+            session.flush()
+            session.add(
+                db.Embedding(
+                    person_id=person.id,
+                    vector=face_engine.embedding_to_bytes(faces[0].embedding),
+                    thumb_path=_save_thumbnail(rgb, faces[0].bbox),
+                )
+            )
+        session.commit()
+        session.close()
+    except Exception:
+        pass  # seeding is best-effort; never crash startup over it
 
 
 # ---------------------------------------------------------------------------

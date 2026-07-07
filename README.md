@@ -1,3 +1,14 @@
+<!-- The block below is Hugging Face Spaces config; it's ignored by GitHub. -->
+---
+title: FaceMatch
+emoji: 🙂
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # FaceMatch — a face recognition web app
 
 FaceMatch is a small web app that recognises faces. You **enroll** people by name
@@ -134,6 +145,20 @@ curl -X POST http://127.0.0.1:8000/api/recognize -F "file=@samples/personB.jpg" 
 
 When I ran this the same person came back at distance **~0.06** and a different
 person at **~0.94** (threshold 0.5) — a nice clean separation.
+
+## Deployment
+
+The app is containerised for **Hugging Face Spaces** (Docker SDK). The included
+`Dockerfile` runs it on port 7860 as a non-root user and sets
+`FACEMATCH_SEED_DEMO=1`, which auto-enrols a sample face on first boot so the
+hosted gallery isn't empty. To deploy:
+
+1. Create a new Space at huggingface.co (SDK: **Docker**, blank).
+2. Push this repo to the Space's git remote (or link the GitHub repo).
+3. Wait for the build; the ArcFace model downloads on the first request.
+
+Storage on Spaces is ephemeral, so the gallery resets when the Space restarts —
+fine for a public demo.
 
 ## Limitations (being honest)
 
