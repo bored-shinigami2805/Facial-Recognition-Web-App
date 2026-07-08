@@ -9,13 +9,14 @@ from __future__ import annotations
 import base64
 import io
 import os
+import secrets
 import threading
 import uuid
 from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageFont
@@ -40,6 +41,41 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Face Recognition Demo", version="1.0", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# --- Access control ---------------------------------------------------------
+# Face embeddings are biometric data, so on any public deployment the whole app
+# should sit behind a login. If ADMIN_PASSWORD is set (e.g. as a Hugging Face
+# Space secret) every request needs HTTP Basic auth; if it's unset (local dev
+# and tests) the app stays open. Set it in production and you're protected even
+# if the hosting is public.
+_ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+
+def _check_basic_auth(header: str | None) -> bool:
+    """Return True if the Authorization header holds the admin credentials."""
+    if not header or not header.startswith("Basic "):
+        return False
+    try:
+        user, _, pw = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+    except Exception:
+        return False
+    # constant-time comparison to avoid leaking the password via timing
+    return secrets.compare_digest(user, _ADMIN_USER) and secrets.compare_digest(
+        pw, _ADMIN_PASSWORD
+    )
+
+
+@app.middleware("http")
+async def _require_login(request: Request, call_next):
+    """Gate every route (API, SPA and thumbnails) behind Basic auth when a
+    password is configured. No password configured -> open (local use)."""
+    if _ADMIN_PASSWORD and not _check_basic_auth(request.headers.get("Authorization")):
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="FaceMatch"'},
+        )
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ not the neural network itself. The database is swapped for an in-memory SQLite
 via a dependency override.
 """
 
+import base64
 import io
 
 import numpy as np
@@ -120,6 +121,22 @@ def test_enroll_rejects_photo_with_no_face(client, monkeypatch):
         files={"files": ("blank.png", _png_bytes(), "image/png")},
     )
     assert r.status_code == 422
+
+
+def test_auth_gates_everything_when_password_set(client, monkeypatch):
+    # by default (no password) the app is open
+    assert client.get("/api/people").status_code == 200
+
+    # once a password is configured, every request needs Basic auth
+    monkeypatch.setattr(main, "_ADMIN_PASSWORD", "s3cret")
+    assert client.get("/api/people").status_code == 401
+    assert client.get("/").status_code == 401  # the SPA is gated too
+
+    good = base64.b64encode(b"admin:s3cret").decode()
+    assert client.get("/api/people", headers={"Authorization": f"Basic {good}"}).status_code == 200
+
+    bad = base64.b64encode(b"admin:wrong").decode()
+    assert client.get("/api/people", headers={"Authorization": f"Basic {bad}"}).status_code == 401
 
 
 def test_delete_person(client):
