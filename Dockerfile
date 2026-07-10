@@ -24,8 +24,11 @@ WORKDIR /home/user/app
 COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
+# Bake the buffalo_l pack into the image (downloads to $HOME/.insightface) so
+# the first request doesn't pay for a ~280 MB download.
+RUN python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_l', allowed_modules=['detection', 'recognition']).prepare(ctx_id=-1)"
+
 COPY --chown=user . .
 
-# InsightFace caches its model under $HOME/.insightface on first request.
 EXPOSE 7860
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
