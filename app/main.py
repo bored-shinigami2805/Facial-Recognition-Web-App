@@ -153,7 +153,11 @@ def _save_thumbnail(rgb_image, box: tuple[int, int, int, int]) -> str:
     crop.thumbnail((config.THUMB_SIZE, config.THUMB_SIZE))
     fname = f"{uuid.uuid4().hex}.png"
     crop.save(config.THUMB_DIR / fname)
-    return f"/thumbnails/{fname}"
+    return fname  # basename only; the URL is built when serving
+
+
+def _thumb_url(stored: str) -> str:
+    return f"/thumbnails/{Path(stored).name}"
 
 
 def _read_upload(upload: UploadFile) -> bytes:
@@ -353,7 +357,7 @@ def list_people(session: Session = Depends(db.get_session)):
     people = session.query(db.Person).order_by(db.Person.name).all()
     out = []
     for p in people:
-        thumb = p.embeddings[0].thumb_path if p.embeddings else None
+        thumb = _thumb_url(p.embeddings[0].thumb_path) if p.embeddings else None
         out.append(
             schemas.PersonOut(
                 id=p.id, name=p.name, image_count=len(p.embeddings), thumbnail=thumb
@@ -369,14 +373,19 @@ def delete_person(person_id: int, session: Session = Depends(db.get_session)):
     if person is None:
         raise HTTPException(404, "Person not found.")
 
-    # best-effort cleanup of thumbnail files on disk
+    # best-effort cleanup of thumbnail files, resolved by basename inside THUMB_DIR
+    thumb_root = config.THUMB_DIR.resolve()
     for emb in person.embeddings:
-        if emb.thumb_path:
-            fpath = config.DATA_DIR / emb.thumb_path.lstrip("/")
-            try:
-                fpath.unlink(missing_ok=True)
-            except OSError as exc:
-                log.warning("could not delete thumbnail %s: %s", fpath, exc)
+        if not emb.thumb_path:
+            continue
+        target = (config.THUMB_DIR / Path(emb.thumb_path).name).resolve()
+        if not target.is_relative_to(thumb_root):
+            log.warning("refusing to delete thumbnail outside THUMB_DIR: %s", target)
+            continue
+        try:
+            target.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("could not delete thumbnail %s: %s", target, exc)
 
     session.delete(person)
     session.commit()
