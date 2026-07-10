@@ -33,20 +33,22 @@ def test_embedding_roundtrip():
     assert np.allclose(emb, back)
 
 
-def test_nearest_picks_closest():
+def test_gallery_match_picks_closest():
     query = _unit(1, 0, 0)
-    gallery = [
-        (1, _unit(0, 1, 0)),   # far
-        (2, _unit(0.9, 0.1, 0)),  # close
-        (3, _unit(-1, 0, 0)),  # opposite
-    ]
-    pid, dist = face_engine.nearest(query, gallery)
+    gallery = face_engine.Gallery.from_rows(
+        [
+            (1, _unit(0, 1, 0)),
+            (2, _unit(0.9, 0.1, 0)),
+            (3, _unit(-1, 0, 0)),
+        ]
+    )
+    pid, dist = gallery.match(query)
     assert pid == 2
     assert dist < 0.05
 
 
-def test_nearest_empty_gallery():
-    pid, dist = face_engine.nearest(_unit(1, 0), [])
+def test_gallery_match_empty():
+    pid, dist = face_engine.Gallery.from_rows([]).match(_unit(1, 0))
     assert pid is None
     assert dist == float("inf")
 

@@ -113,19 +113,39 @@ def distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(1.0 - np.dot(a, b))
 
 
-def nearest(embedding: np.ndarray, gallery: list[tuple[int, np.ndarray]]):
-    """Find the nearest gallery entry to `embedding`.
+class Gallery:
+    """All enrolled embeddings held as one (N, 512) matrix for fast matching."""
 
-    `gallery` is a list of (person_id, embedding). Returns
-    (person_id, distance) for the closest entry, or (None, inf) if the gallery
-    is empty.
-    """
-    best_id, best_dist = None, float("inf")
-    for pid, emb in gallery:
-        d = distance(embedding, emb)
-        if d < best_dist:
-            best_id, best_dist = pid, d
-    return best_id, best_dist
+    def __init__(self, person_ids: np.ndarray, matrix: np.ndarray):
+        self._person_ids = person_ids
+        self._matrix = matrix
+
+    @classmethod
+    def from_rows(cls, rows: list[tuple[int, np.ndarray]]) -> "Gallery":
+        if rows:
+            ids = np.array([pid for pid, _ in rows], dtype=np.int64)
+            matrix = np.vstack([emb for _, emb in rows]).astype(np.float32)
+        else:
+            ids = np.empty(0, dtype=np.int64)
+            matrix = np.empty((0, config.EMBEDDING_DIM), dtype=np.float32)
+        return cls(ids, matrix)
+
+    def __len__(self) -> int:
+        return int(self._person_ids.shape[0])
+
+    def match(self, query: np.ndarray) -> tuple[int | None, float]:
+        """Nearest enrolled (person_id, cosine distance), using each person's
+        closest embedding. Returns (None, inf) for an empty gallery."""
+        if len(self) == 0:
+            return None, float("inf")
+        q = np.asarray(query, dtype=np.float32)
+        dists = 1.0 - self._matrix @ q
+        best_id, best_dist = None, float("inf")
+        for pid in np.unique(self._person_ids):
+            d = float(dists[self._person_ids == pid].min())
+            if d < best_dist:
+                best_id, best_dist = int(pid), d
+        return best_id, best_dist
 
 
 def confidence_from_distance(d: float) -> float:

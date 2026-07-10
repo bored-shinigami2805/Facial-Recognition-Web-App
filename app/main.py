@@ -79,6 +79,35 @@ async def _require_login(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
+# Gallery cache
+# ---------------------------------------------------------------------------
+# The gallery matrix is expensive to rebuild from SQLite, so we keep one in
+# memory and drop it whenever the enrolled set changes.
+_gallery: face_engine.Gallery | None = None
+
+
+def _rebuild_gallery(session: Session) -> face_engine.Gallery:
+    global _gallery
+    rows = [
+        (e.person_id, face_engine.embedding_from_bytes(e.vector))
+        for e in session.query(db.Embedding).all()
+    ]
+    _gallery = face_engine.Gallery.from_rows(rows)
+    return _gallery
+
+
+def _get_gallery(session: Session) -> face_engine.Gallery:
+    if _gallery is None:
+        return _rebuild_gallery(session)
+    return _gallery
+
+
+def _invalidate_gallery() -> None:
+    global _gallery
+    _gallery = None
+
+
+# ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
 def _save_thumbnail(rgb_image, box: tuple[int, int, int, int]) -> str:
@@ -167,6 +196,7 @@ def _seed_demo_people() -> None:
             )
         session.commit()
         session.close()
+        _invalidate_gallery()
     except Exception:
         pass  # seeding is best-effort; never crash startup over it
 
@@ -233,6 +263,7 @@ def enroll(
         raise HTTPException(422, detail)
 
     session.commit()
+    _invalidate_gallery()
     msg = f"Enrolled {enrolled} face(s) for '{name}'."
     if notes:
         msg += " Notes: " + " | ".join(notes)
@@ -256,25 +287,21 @@ def recognize(
 
     thr = float(threshold) if threshold is not None else config.get_threshold()
 
-    # load the whole gallery into memory - fine for a small demo
-    rows = session.query(db.Embedding).all()
-    gallery = [(e.person_id, face_engine.embedding_from_bytes(e.vector)) for e in rows]
+    gallery = _get_gallery(session)
     id_to_name = {p.id: p.name for p in session.query(db.Person).all()}
 
     faces = face_engine.detect_faces(rgb)
     matches: list[dict] = []
     for f in faces:
-        matched_id, dist = face_engine.nearest(f.embedding, gallery)
+        matched_id, dist = gallery.match(f.embedding)
         has_match = matched_id is not None and dist <= thr
-        # distance/confidence are only meaningful when there's something to
-        # compare against (an empty gallery gives no nearest neighbour).
         matches.append(
             {
                 "box": list(f.bbox),
                 "name": id_to_name.get(matched_id, "Unknown") if has_match else "Unknown",
                 "person_id": matched_id if has_match else None,
-                "distance": round(dist, 4) if gallery else None,
-                "confidence": face_engine.confidence_from_distance(dist) if gallery else None,
+                "distance": round(dist, 4) if len(gallery) else None,
+                "confidence": face_engine.confidence_from_distance(dist) if len(gallery) else None,
                 "det_score": round(f.det_score, 3),
             }
         )
@@ -321,6 +348,7 @@ def delete_person(person_id: int, session: Session = Depends(db.get_session)):
 
     session.delete(person)
     session.commit()
+    _invalidate_gallery()
     return {"deleted": person_id}
 
 

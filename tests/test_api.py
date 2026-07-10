@@ -55,6 +55,8 @@ def client(monkeypatch, tmp_path):
             s.close()
 
     main.app.dependency_overrides[db.get_session] = override_session
+    # start each test with a fresh (empty) gallery cache
+    monkeypatch.setattr(main, "_gallery", None)
     # default fake: every image has exactly one face with embedding "0"
     monkeypatch.setattr(face_engine, "detect_faces", lambda rgb: [_fake_face(0)])
 
