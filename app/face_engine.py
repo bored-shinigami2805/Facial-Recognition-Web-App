@@ -18,12 +18,15 @@ because InsightFace downloads the ~300MB model pack, after that it's cached in
 from __future__ import annotations
 
 import io
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image, ImageOps
 
 from . import config
+
+log = logging.getLogger(__name__)
 
 # Cap image size to guard against decompression-bomb uploads.
 Image.MAX_IMAGE_PIXELS = 50_000_000
@@ -39,6 +42,7 @@ def _get_app():
     if _app is None:
         from insightface.app import FaceAnalysis
 
+        log.info("loading InsightFace model %s (first call downloads the pack)", config.MODEL_NAME)
         app = FaceAnalysis(
             name=config.MODEL_NAME,
             providers=["CPUExecutionProvider"],

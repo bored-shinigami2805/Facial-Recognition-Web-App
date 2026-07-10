@@ -7,6 +7,7 @@ Run with:  uvicorn app.main:app --reload
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import secrets
 import threading
@@ -23,6 +24,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import config, db, face_engine, schemas
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("facematch")
 
 
 @asynccontextmanager
@@ -178,7 +185,7 @@ def _seed_demo_people() -> None:
         session.close()
         _invalidate_gallery()
     except Exception:
-        pass  # seeding is best-effort; never crash startup over it
+        log.exception("demo seed failed")
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +295,12 @@ def recognize(
             }
         )
 
+    best = min((m["distance"] for m in matches if m["distance"] is not None), default=None)
+    log.info(
+        "recognize: faces=%d threshold=%.2f best_distance=%s decisions=%s",
+        len(faces), thr, f"{best:.4f}" if best is not None else "n/a",
+        [m["name"] for m in matches],
+    )
     return schemas.RecognizeResponse(
         faces_found=len(faces),
         threshold=thr,
@@ -323,8 +336,8 @@ def delete_person(person_id: int, session: Session = Depends(db.get_session)):
             fpath = config.DATA_DIR / emb.thumb_path.lstrip("/")
             try:
                 fpath.unlink(missing_ok=True)
-            except OSError:
-                pass  # TODO: log this instead of silently ignoring
+            except OSError as exc:
+                log.warning("could not delete thumbnail %s: %s", fpath, exc)
 
     session.delete(person)
     session.commit()
