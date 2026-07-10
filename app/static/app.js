@@ -3,6 +3,11 @@
 
 const $ = (id) => document.getElementById(id);
 
+// escape server-provided strings (names) before putting them in innerHTML
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 // small session state (resets on reload) used for the stat cards + history
 const session = { scans: 0, matched: 0, unknown: 0 };
 let peopleById = {};   // id -> {name, thumbnail}
@@ -220,7 +225,7 @@ function drawScan(blob, matches) {
 
 function avatarHtml(match, cls) {
   const p = match.person_id != null ? peopleById[match.person_id] : null;
-  if (p && p.thumbnail) return `<img class="identity-avatar ${cls}" src="${p.thumbnail}" alt="">`;
+  if (p && p.thumbnail) return `<img class="identity-avatar ${cls}" src="${escapeHtml(p.thumbnail)}" alt="">`;
   return `<div class="identity-avatar ${cls} placeholder">
       <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="8.5" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg></div>`;
@@ -248,7 +253,7 @@ function renderResult(data) {
   let html = `<div class="identity">
       ${avatarHtml(headline, known ? "" : "placeholder")}
       <div>
-        <div class="identity-name">${headline.name}</div>
+        <div class="identity-name">${escapeHtml(headline.name)}</div>
         <div class="identity-sub">${data.faces_found} face(s) in this photo</div>
         <span class="pill ${known ? "pill-ok" : "pill-warn"}">
           ${known ? "● Recognized" : "● Not recognized"}</span>
@@ -270,7 +275,7 @@ function renderResult(data) {
       <div class="multi-head">Other faces</div>` +
       rest.map((m) => `<div class="multi-row">
           <span class="dot ${m.name === "Unknown" ? "" : "dot-green"}" style="${m.name === "Unknown" ? "background:#f59e0b" : ""}"></span>
-          <span class="name">${m.name}</span>
+          <span class="name">${escapeHtml(m.name)}</span>
           <span class="dist">${m.distance == null ? "–" : m.distance.toFixed(3)}</span>
         </div>`).join("") + `</div>`;
   }
@@ -292,7 +297,7 @@ function updateHistory(data) {
     item.className = "history-item";
     item.innerHTML = `
       <span class="dot" style="background:${known ? "var(--green-dot)" : "var(--amber)"}"></span>
-      <span class="name">${m.name}</span>
+      <span class="name">${escapeHtml(m.name)}</span>
       <span class="time">${nowHM()}</span>`;
     list.prepend(item);
   });
@@ -359,8 +364,8 @@ async function loadGallery() {
   }
   list.innerHTML = people.map((p) => `
     <div class="person-card">
-      <img class="person-avatar" src="${p.thumbnail || ""}" alt="${p.name}">
-      <div class="person-name">${p.name}</div>
+      <img class="person-avatar" src="${escapeHtml(p.thumbnail || "")}" alt="${escapeHtml(p.name)}">
+      <div class="person-name">${escapeHtml(p.name)}</div>
       <div class="person-count">${p.image_count} photo(s)</div>
       <button class="btn-del" data-id="${p.id}">Delete</button>
     </div>`).join("");

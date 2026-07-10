@@ -200,6 +200,10 @@ def enroll(
     name = name.strip()
     if not name:
         raise HTTPException(400, "Name must not be empty.")
+    if len(name) > config.MAX_NAME_LEN:
+        raise HTTPException(400, f"Name too long ({config.MAX_NAME_LEN} chars max).")
+    if any(c in name for c in "<>") or any(ord(c) < 32 for c in name):
+        raise HTTPException(400, "Name contains invalid characters.")
     if len(files) > config.MAX_ENROLL_FILES:
         raise HTTPException(400, f"Too many files; {config.MAX_ENROLL_FILES} max per enroll.")
 

@@ -115,6 +115,17 @@ def test_enroll_rejects_photo_with_no_face(client, monkeypatch):
     assert r.status_code == 422
 
 
+def test_enroll_rejects_html_in_name(client):
+    r = client.post(
+        "/api/enroll",
+        data={"name": "<img src=x onerror=alert(1)>"},
+        files={"files": ("a.png", _png_bytes(), "image/png")},
+    )
+    assert r.status_code == 400
+    # the malicious name is never stored
+    assert client.get("/api/people").json() == []
+
+
 def test_auth_gates_everything_when_password_set(client, monkeypatch):
     # by default (no password) the app is open
     assert client.get("/api/people").status_code == 200

@@ -33,3 +33,4 @@ THUMB_SIZE = 150                  # thumbnail width/height in px
 # --- Upload limits ---------------------------------------------------------
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024   # 8 MB per image
 MAX_ENROLL_FILES = 10                # photos accepted in one enroll call
+MAX_NAME_LEN = 80                    # longest accepted person name
