@@ -7,7 +7,6 @@ Run with:  uvicorn app.main:app --reload
 from __future__ import annotations
 
 import base64
-import io
 import os
 import secrets
 import threading
@@ -19,7 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -122,37 +121,6 @@ def _save_thumbnail(rgb_image, box: tuple[int, int, int, int]) -> str:
     fname = f"{uuid.uuid4().hex}.png"
     crop.save(config.THUMB_DIR / fname)
     return f"/thumbnails/{fname}"
-
-
-def _annotate(rgb_image, matches: list[dict]) -> str:
-    """Draw boxes + labels on the image and return a base64 PNG data URL."""
-    img = Image.fromarray(rgb_image).convert("RGB")
-    draw = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 18)
-    except OSError:
-        font = ImageFont.load_default()
-
-    for m in matches:
-        x1, y1, x2, y2 = m["box"]
-        known = m["name"] != "Unknown"
-        color = (34, 197, 94) if known else (239, 68, 68)  # green / red
-        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-
-        label = m["name"]
-        if m["distance"] is not None:
-            label += f"  ({m['distance']:.2f})"
-        # label background so text stays readable
-        tb = draw.textbbox((0, 0), label, font=font)
-        tw, th = tb[2] - tb[0], tb[3] - tb[1]
-        ly = max(0, y1 - th - 6)
-        draw.rectangle([x1, ly, x1 + tw + 8, ly + th + 6], fill=color)
-        draw.text((x1 + 4, ly + 3), label, fill=(255, 255, 255), font=font)
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    return f"data:image/png;base64,{b64}"
 
 
 def _read_upload(upload: UploadFile) -> bytes:
@@ -320,12 +288,10 @@ def recognize(
             }
         )
 
-    annotated = _annotate(rgb, matches)
     return schemas.RecognizeResponse(
         faces_found=len(faces),
         threshold=thr,
         matches=[schemas.Match(**m) for m in matches],
-        annotated_image=annotated,
     )
 
 

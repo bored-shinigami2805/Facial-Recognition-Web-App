@@ -160,8 +160,7 @@ async function recognizeBlob(blob) {
 
   try {
     const data = await api("/api/recognize", { method: "POST", body: fd });
-    // show annotated image in the ring
-    $("scan-result-img").src = data.annotated_image;
+    await drawScan(blob, data.matches);
     setRingMode("result");
     $("scan-hint").textContent =
       `${data.faces_found} face(s) found · threshold ${data.threshold.toFixed(2)}`;
@@ -176,6 +175,47 @@ async function recognizeBlob(blob) {
     ring.classList.remove("busy");
     $("primary-btn").disabled = false;
   }
+}
+
+// draw the scanned image plus detection boxes onto the result canvas
+function drawScan(blob, matches) {
+  return new Promise((resolve) => {
+    const canvas = $("scan-canvas");
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      const scale = img.naturalWidth / 400;
+      const th = Math.max(14, Math.round(16 * scale));
+      const pad = Math.max(3, 4 * scale);
+      ctx.lineWidth = Math.max(2, 3 * scale);
+      ctx.font = `${th}px sans-serif`;
+      ctx.textBaseline = "top";
+
+      matches.forEach((m) => {
+        const color = m.name === "Unknown" ? "#ef4444" : "#22c55e";
+        const [x1, y1, x2, y2] = m.box;
+        ctx.strokeStyle = color;
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+        const label = m.name + (m.distance != null ? `  (${m.distance.toFixed(2)})` : "");
+        const tw = ctx.measureText(label).width;
+        const ly = Math.max(0, y1 - th - pad * 2);
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, ly, tw + pad * 2, th + pad * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, x1 + pad, ly + pad);
+      });
+
+      URL.revokeObjectURL(img.src);
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = URL.createObjectURL(blob);
+  });
 }
 
 function avatarHtml(match, cls) {

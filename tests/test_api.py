@@ -92,7 +92,6 @@ def test_enroll_then_recognize_match(client):
     assert r.status_code == 200
     assert body["faces_found"] == 1
     assert body["matches"][0]["name"] == "Alice"
-    assert body["annotated_image"].startswith("data:image/png;base64,")
 
 
 def test_recognize_unknown_when_gallery_empty(client):

@@ -29,7 +29,6 @@ class RecognizeResponse(BaseModel):
     faces_found: int
     threshold: float
     matches: list[Match]
-    annotated_image: str           # data URL (base64 PNG) with boxes drawn
 
 
 class PersonOut(BaseModel):
