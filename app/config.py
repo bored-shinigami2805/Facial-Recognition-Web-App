@@ -31,8 +31,9 @@ EMBEDDING_DIM = 512
 DISTANCE_METRIC = "cosine"
 
 # Default match threshold (cosine distance; matches below this are accepted).
+# 0.77 is the accuracy-optimal point from eval/threshold_sweep.py on LFW.
 # Override per deployment with the FACEMATCH_THRESHOLD env var.
-DEFAULT_THRESHOLD = float(os.getenv("FACEMATCH_THRESHOLD", "0.45"))
+DEFAULT_THRESHOLD = float(os.getenv("FACEMATCH_THRESHOLD", "0.77"))
 
 THUMB_SIZE = 150                  # thumbnail width/height in px
 

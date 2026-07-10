@@ -16,6 +16,9 @@ samples/
 # InsightFace downloads its models here on first run
 .insightface/
 
+# cached embeddings from the threshold sweep (the PNGs are committed)
+eval/lfw_embeddings.npz
+
 # editor / tooling junk
 .vscode/
 .idea/
