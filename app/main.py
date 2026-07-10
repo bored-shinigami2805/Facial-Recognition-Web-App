@@ -156,10 +156,22 @@ def _annotate(rgb_image, matches: list[dict]) -> str:
 
 
 def _read_upload(upload: UploadFile) -> bytes:
-    data = upload.file.read()
-    if not data:
+    if not (upload.content_type or "").startswith("image/"):
+        raise HTTPException(400, f"'{upload.filename}' is not an image.")
+    limit = config.MAX_UPLOAD_BYTES
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = upload.file.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(413, f"'{upload.filename}' exceeds the {limit // (1024 * 1024)} MB limit.")
+        chunks.append(chunk)
+    if total == 0:
         raise HTTPException(400, f"File '{upload.filename}' is empty.")
-    return data
+    return b"".join(chunks)
 
 
 # Which bundled demo photo to auto-enroll on the hosted demo. We only seed
@@ -219,6 +231,8 @@ def enroll(
     name = name.strip()
     if not name:
         raise HTTPException(400, "Name must not be empty.")
+    if len(files) > config.MAX_ENROLL_FILES:
+        raise HTTPException(400, f"Too many files; {config.MAX_ENROLL_FILES} max per enroll.")
 
     # reuse an existing person with the same name, otherwise create one
     person = session.query(db.Person).filter(func.lower(db.Person.name) == name.lower()).first()
@@ -231,11 +245,11 @@ def enroll(
     enrolled = 0
     notes: list[str] = []
     for upload in files:
+        data = _read_upload(upload)  # size/content-type errors abort the request
         try:
-            data = _read_upload(upload)
             rgb = face_engine.load_image(data)
-        except (ValueError, HTTPException) as exc:
-            notes.append(f"{upload.filename}: {getattr(exc, 'detail', str(exc))}")
+        except ValueError as exc:
+            notes.append(f"{upload.filename}: {exc}")
             continue
 
         faces = face_engine.detect_faces(rgb)

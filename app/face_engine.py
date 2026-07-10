@@ -25,6 +25,9 @@ from PIL import Image, ImageOps
 
 from . import config
 
+# Cap image size to guard against decompression-bomb uploads.
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
 # The heavy import (insightface) is done lazily inside _get_app() so that just
 # importing this module (e.g. in a quick unit test) stays cheap.
 _app = None
@@ -72,6 +75,8 @@ def load_image(data: bytes) -> np.ndarray:
         img = Image.open(io.BytesIO(data))
         img = ImageOps.exif_transpose(img)   # respect phone rotation
         img = img.convert("RGB")
+    except Image.DecompressionBombError as exc:
+        raise ValueError("Image is too large to process.") from exc
     except Exception as exc:  # Pillow raises a bunch of different errors
         raise ValueError("Could not read image file (is it a valid image?)") from exc
     return np.array(img)
