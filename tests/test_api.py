@@ -131,6 +131,45 @@ def test_auth_gates_everything_when_password_set(client, monkeypatch):
     assert client.get("/api/people", headers={"Authorization": f"Basic {bad}"}).status_code == 401
 
 
+def test_upload_too_large_rejected(client):
+    big = b"\x00" * (8 * 1024 * 1024 + 1)
+    r = client.post("/api/recognize", files={"file": ("big.png", big, "image/png")})
+    assert r.status_code == 413
+
+
+def test_non_image_content_type_rejected(client):
+    r = client.post("/api/recognize", files={"file": ("x.txt", b"hello", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_threshold_override_changes_result(client, monkeypatch):
+    client.post(
+        "/api/enroll",
+        data={"name": "Alice"},
+        files={"files": ("a.png", _png_bytes(), "image/png")},
+    )
+    # a query face sitting ~0.29 cosine distance from Alice's embedding
+    q = np.zeros(512, dtype=np.float32)
+    q[0], q[1] = 1.0, 1.0
+    q /= np.linalg.norm(q)
+    face = face_engine.DetectedFace(bbox=(0, 0, 10, 10), embedding=q, det_score=0.9)
+    monkeypatch.setattr(face_engine, "detect_faces", lambda rgb: [face])
+
+    strict = client.post(
+        "/api/recognize",
+        data={"threshold": 0.2},
+        files={"file": ("q.png", _png_bytes(), "image/png")},
+    )
+    assert strict.json()["matches"][0]["name"] == "Unknown"
+
+    lenient = client.post(
+        "/api/recognize",
+        data={"threshold": 0.4},
+        files={"file": ("q.png", _png_bytes(), "image/png")},
+    )
+    assert lenient.json()["matches"][0]["name"] == "Alice"
+
+
 def test_delete_person(client):
     client.post(
         "/api/enroll",
