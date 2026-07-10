@@ -159,6 +159,12 @@ hosted gallery isn't empty. To deploy:
 Storage on Spaces is ephemeral, so the gallery resets when the Space restarts —
 fine for a public demo.
 
+The public demo is open by design and only holds throwaway demo data. To run it
+privately, set an `ADMIN_PASSWORD` (for example as a Space secret) and every
+route — the page, the API and the thumbnails — sits behind HTTP Basic auth. With
+no `ADMIN_PASSWORD` set the app is open, and it logs a warning saying so on
+startup.
+
 ## Limitations
 
 - The embeddings come from a pretrained ArcFace model; I did not train it.

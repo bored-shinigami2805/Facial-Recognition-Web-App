@@ -37,6 +37,8 @@ log = logging.getLogger("facematch")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    if not _ADMIN_PASSWORD:
+        log.warning("ADMIN_PASSWORD is not set; the app is running with no authentication")
     # On the hosted demo we auto-enroll a sample face in the background so the
     # gallery isn't empty on first visit. Gated behind an env var so it never
     # runs locally or during tests.
