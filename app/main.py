@@ -11,7 +11,9 @@ import logging
 import os
 import secrets
 import threading
+import time
 import uuid
+from collections import defaultdict, deque
 from pathlib import Path
 
 from contextlib import asynccontextmanager
@@ -81,6 +83,29 @@ async def _require_login(request: Request, call_next):
             headers={"WWW-Authenticate": 'Basic realm="FaceMatch"'},
         )
     return await call_next(request)
+
+
+# --- Rate limiting ----------------------------------------------------------
+# In-memory sliding window per client IP. Fine for the single-process demo; a
+# multi-worker deployment would need a shared store.
+_rate_hits: dict[str, deque] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(request: Request) -> None:
+    now = time.monotonic()
+    hits = _rate_hits[_client_ip(request)]
+    while hits and now - hits[0] > 60.0:
+        hits.popleft()
+    if len(hits) >= config.RATE_LIMIT_PER_MIN:
+        raise HTTPException(429, "Too many requests, please slow down.")
+    hits.append(now)
 
 
 # ---------------------------------------------------------------------------
@@ -192,11 +217,13 @@ def _seed_demo_people() -> None:
 # ---------------------------------------------------------------------------
 @app.post("/api/enroll", response_model=schemas.EnrollResponse)
 def enroll(
+    request: Request,
     name: str = Form(...),
     files: list[UploadFile] = File(...),
     session: Session = Depends(db.get_session),
 ):
     """Enroll a person: largest face per photo, photos with no face are skipped."""
+    _rate_limit(request)
     name = name.strip()
     if not name:
         raise HTTPException(400, "Name must not be empty.")
@@ -211,13 +238,24 @@ def enroll(
     person = session.query(db.Person).filter(func.lower(db.Person.name) == name.lower()).first()
     created_new = person is None
     if created_new:
+        if session.query(db.Person).count() >= config.MAX_PEOPLE:
+            raise HTTPException(400, f"Gallery is full ({config.MAX_PEOPLE} people max).")
         person = db.Person(name=name)
         session.add(person)
         session.flush()  # get person.id without committing yet
 
+    remaining = config.MAX_EMBEDDINGS_PER_PERSON - len(person.embeddings)
+    if remaining <= 0:
+        raise HTTPException(
+            400, f"'{name}' already has the maximum {config.MAX_EMBEDDINGS_PER_PERSON} images."
+        )
+
     enrolled = 0
     notes: list[str] = []
     for upload in files:
+        if enrolled >= remaining:
+            notes.append(f"only {remaining} more image(s) allowed per person; rest skipped")
+            break
         data = _read_upload(upload)  # size/content-type errors abort the request
         try:
             rgb = face_engine.load_image(data)
@@ -261,11 +299,13 @@ def enroll(
 
 @app.post("/api/recognize", response_model=schemas.RecognizeResponse)
 def recognize(
+    request: Request,
     file: UploadFile = File(...),
     threshold: float | None = Form(None),
     session: Session = Depends(db.get_session),
 ):
     """Detect every face in the uploaded photo and match against the gallery."""
+    _rate_limit(request)
     data = _read_upload(file)
     try:
         rgb = face_engine.load_image(data)

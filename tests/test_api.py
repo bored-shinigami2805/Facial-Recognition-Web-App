@@ -52,8 +52,9 @@ def client(monkeypatch):
             s.close()
 
     main.app.dependency_overrides[db.get_session] = override_session
-    # start each test with a fresh (empty) gallery cache
+    # start each test with a fresh gallery cache and rate-limit state
     monkeypatch.setattr(main, "_gallery", None)
+    main._rate_hits.clear()
     # default fake: every image has exactly one face with embedding "0"
     monkeypatch.setattr(face_engine, "detect_faces", lambda rgb: [_fake_face(0)])
 
@@ -179,6 +180,40 @@ def test_threshold_override_changes_result(client, monkeypatch):
         files={"file": ("q.png", _png_bytes(), "image/png")},
     )
     assert lenient.json()["matches"][0]["name"] == "Alice"
+
+
+def test_rate_limit_returns_429(client, monkeypatch):
+    monkeypatch.setattr(main.config, "RATE_LIMIT_PER_MIN", 2)
+    for _ in range(2):
+        ok = client.post("/api/recognize", files={"file": ("q.png", _png_bytes(), "image/png")})
+        assert ok.status_code == 200
+    limited = client.post("/api/recognize", files={"file": ("q.png", _png_bytes(), "image/png")})
+    assert limited.status_code == 429
+
+
+def test_embedding_cap_per_person(client, monkeypatch):
+    monkeypatch.setattr(main.config, "MAX_EMBEDDINGS_PER_PERSON", 2)
+    files = [("files", (f"{i}.png", _png_bytes(), "image/png")) for i in range(3)]
+    r = client.post("/api/enroll", data={"name": "Cap"}, files=files)
+    assert r.status_code == 200
+    assert r.json()["faces_enrolled"] == 2  # third photo dropped at the cap
+
+    again = client.post(
+        "/api/enroll", data={"name": "Cap"}, files={"files": ("x.png", _png_bytes(), "image/png")}
+    )
+    assert again.status_code == 400  # already at the per-person cap
+
+
+def test_people_cap(client, monkeypatch):
+    monkeypatch.setattr(main.config, "MAX_PEOPLE", 1)
+    first = client.post(
+        "/api/enroll", data={"name": "One"}, files={"files": ("a.png", _png_bytes(), "image/png")}
+    )
+    assert first.status_code == 200
+    second = client.post(
+        "/api/enroll", data={"name": "Two"}, files={"files": ("b.png", _png_bytes(), "image/png")}
+    )
+    assert second.status_code == 400
 
 
 def test_delete_person(client):
