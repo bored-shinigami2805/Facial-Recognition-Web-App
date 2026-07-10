@@ -15,9 +15,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     ForeignKey,
+    Index,
     LargeBinary,
     String,
     create_engine,
+    func,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -61,6 +63,10 @@ class Embedding(Base):
     thumb_path: Mapped[str] = mapped_column(String(255), default="")
 
     person: Mapped["Person"] = relationship(back_populates="embeddings")
+
+
+# Case-insensitive unique names, so concurrent enrolls can't duplicate a person.
+Index("ix_people_name_ci", func.lower(Person.name), unique=True)
 
 
 engine = create_engine(config.DB_URL, connect_args={"check_same_thread": False})

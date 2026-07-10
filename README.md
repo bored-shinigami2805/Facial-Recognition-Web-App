@@ -77,6 +77,9 @@ uvicorn app.main:app --reload
 The **first** recognise/enroll request downloads the InsightFace model pack
 (~280MB) into `~/.insightface`; that's a one-time download and it's cached after.
 
+If you're updating an existing checkout, delete `data/faces.db` once: the schema
+gained a unique index on names and `create_all()` doesn't migrate in place.
+
 There are two public-domain sample photos wired into the UI ("Try a sample:
 Einstein / Lincoln") so you can test recognition immediately without a webcam.
 
