@@ -17,7 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import config, db, face_engine, main
+from app import db, face_engine, main
 
 
 def _png_bytes(color=(128, 128, 128)) -> bytes:
@@ -34,10 +34,7 @@ def _fake_face(seed=0.0):
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    # keep the config test from touching the real data/ folder
-    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "runtime_config.json")
-
+def client(monkeypatch):
     # in-memory DB shared across threads/connections
     engine = create_engine(
         "sqlite://",
@@ -65,16 +62,10 @@ def client(monkeypatch, tmp_path):
     main.app.dependency_overrides.clear()
 
 
-def test_config_roundtrip(client):
+def test_config_get(client):
     r = client.get("/api/config")
     assert r.status_code == 200
     assert set(r.json()) == {"threshold", "model", "metric"}
-
-    r = client.post("/api/config", json={"threshold": 0.5})
-    assert r.status_code == 200 and r.json()["threshold"] == 0.5
-
-    r = client.post("/api/config", json={"threshold": 9})  # out of range
-    assert r.status_code == 400
 
 
 def test_enroll_then_recognize_match(client):

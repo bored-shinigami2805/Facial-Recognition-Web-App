@@ -59,17 +59,6 @@ async function loadConfig() {
 $("thr-slider").addEventListener("input", (e) => {
   $("thr-val").textContent = parseFloat(e.target.value).toFixed(2);
 });
-$("thr-save").addEventListener("click", async () => {
-  const threshold = parseFloat($("thr-slider").value);
-  try {
-    await api("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ threshold }),
-    });
-    toast(`Default threshold saved: ${threshold.toFixed(2)}`, "ok");
-  } catch (e) { toast(e.message, "err"); }
-});
 
 function refreshStats() {
   $("stat-scans").textContent = session.scans;

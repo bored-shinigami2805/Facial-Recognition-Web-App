@@ -285,7 +285,7 @@ def recognize(
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
-    thr = float(threshold) if threshold is not None else config.get_threshold()
+    thr = float(threshold) if threshold is not None else config.DEFAULT_THRESHOLD
 
     gallery = _get_gallery(session)
     id_to_name = {p.id: p.name for p in session.query(db.Person).all()}
@@ -355,19 +355,7 @@ def delete_person(person_id: int, session: Session = Depends(db.get_session)):
 @app.get("/api/config", response_model=schemas.ConfigOut)
 def get_config():
     return schemas.ConfigOut(
-        threshold=config.get_threshold(),
-        model=config.MODEL_NAME,
-        metric=config.DISTANCE_METRIC,
-    )
-
-
-@app.post("/api/config", response_model=schemas.ConfigOut)
-def update_config(body: schemas.ConfigIn):
-    if not (0.0 < body.threshold < 2.0):
-        raise HTTPException(400, "Threshold must be between 0 and 2 (cosine distance).")
-    config.set_threshold(body.threshold)
-    return schemas.ConfigOut(
-        threshold=config.get_threshold(),
+        threshold=config.DEFAULT_THRESHOLD,
         model=config.MODEL_NAME,
         metric=config.DISTANCE_METRIC,
     )

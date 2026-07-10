@@ -43,7 +43,3 @@ class ConfigOut(BaseModel):
     threshold: float
     model: str
     metric: str
-
-
-class ConfigIn(BaseModel):
-    threshold: float
