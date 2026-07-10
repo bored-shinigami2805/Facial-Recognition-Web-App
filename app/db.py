@@ -1,14 +1,3 @@
-"""Database layer: SQLAlchemy models + session helper.
-
-Two tables:
-  - people:     one row per enrolled person (just an id + name + created time)
-  - embeddings: many rows per person, each holding one 512-d face embedding
-                (stored as raw float32 bytes) and the path to a thumbnail.
-
-Keeping embeddings in a separate table means a person can be enrolled from
-several photos, which improves matching a bit.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -74,12 +63,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def init_db() -> None:
-    """Create tables if they don't exist yet."""
     Base.metadata.create_all(engine)
 
 
 def get_session():
-    """FastAPI dependency that yields a DB session and always closes it."""
     session = SessionLocal()
     try:
         yield session

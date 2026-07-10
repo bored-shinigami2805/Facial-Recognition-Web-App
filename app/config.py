@@ -1,10 +1,4 @@
-"""App configuration.
-
-I kept this deliberately small - just a few constants and a tiny helper to
-read/write the runtime match threshold. A student project doesn't need a full
-settings framework, so this is plain module-level values plus one JSON file for
-the one setting the user is allowed to change at runtime.
-"""
+"""Paths, model settings and upload limits."""
 
 from __future__ import annotations
 
@@ -18,7 +12,6 @@ THUMB_DIR = DATA_DIR / "thumbnails"
 DB_PATH = DATA_DIR / "faces.db"
 DB_URL = f"sqlite:///{DB_PATH}"
 
-# Make sure the folders exist on import so nothing else has to worry about it.
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THUMB_DIR.mkdir(parents=True, exist_ok=True)
 

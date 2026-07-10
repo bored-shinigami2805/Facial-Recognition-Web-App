@@ -10,16 +10,13 @@ pinned: false
 
 # FaceMatch — a face recognition web app
 
+<!-- REWRITE -->
 FaceMatch is a small web app that recognises faces. You **enroll** people by name
 with a few photos, then **recognize** a new photo (or a webcam capture): it finds
 every face, compares each one to the people you've enrolled, and labels the ones
 it's confident about — everything else comes back as *Unknown*. I built it as a
 portfolio project to learn the classic **detect → embed → match** face-recognition
 pipeline end to end, with a clean single-page UI on top of a Python API.
-
-> UI: a top nav (**Recognize / Enroll / Gallery**), a circular face-scan frame,
-> a match/identity card with confidence, and a recent-scans list — light theme,
-> card-based, keyboard/mouse friendly.
 
 ## What it does
 
@@ -35,24 +32,14 @@ pipeline end to end, with a clean single-page UI on top of a Python API.
 
 ## Tech stack & language
 
-| Layer | Choice |
-|-------|--------|
-| **Language** | Python 3.10+ (backend) &middot; vanilla JavaScript (frontend) |
-| **Web framework** | FastAPI + Uvicorn |
-| **Face pipeline** | [InsightFace](https://github.com/deepinsight/insightface) `buffalo_l` on `onnxruntime` (CPU) — RetinaFace detection + ArcFace 512-d embeddings |
-| **Matching** | cosine distance, nearest-neighbour over the stored gallery |
-| **Database** | SQLite via SQLAlchemy |
-| **Frontend** | one static HTML page + CSS + vanilla JS (`fetch`) — no build step, no framework |
-| **Image handling** | Pillow (decode, EXIF-rotate, draw boxes, thumbnails) |
-| **Tests** | pytest |
-
-> **Why InsightFace?** The original plan was `face_recognition` (dlib) with a
-> DeepFace fallback. On my machine (Python 3.13, Windows, no C++ compiler) dlib
-> has no prebuilt wheel and won't compile, and DeepFace drags in a ~1GB
-> TensorFlow install. InsightFace installs as a pure-Python wheel + onnxruntime
-> and gives the same kind of ArcFace 512-d embeddings — and it all sits behind
-> `app/face_engine.py`, so swapping the library later means editing just that one
-> file.
+- Language: Python 3.13 (backend), vanilla JavaScript (frontend)
+- Web framework: FastAPI + Uvicorn
+- Face pipeline: [InsightFace](https://github.com/deepinsight/insightface) `buffalo_l` on `onnxruntime` (CPU) — RetinaFace detection + ArcFace 512-d embeddings
+- Matching: cosine distance, nearest-neighbour over the stored gallery
+- Database: SQLite via SQLAlchemy
+- Frontend: one static HTML page + CSS + vanilla JS (`fetch`), no build step
+- Image handling: Pillow (decode, EXIF-rotate, thumbnails)
+- Tests: pytest
 
 ## Setup & run
 
@@ -85,6 +72,7 @@ Einstein / Lincoln") so you can test recognition immediately without a webcam.
 
 ## How it works
 
+<!-- REWRITE -->
 The pipeline has three stages. **Face detection** (RetinaFace) finds each face in
 an image and returns a bounding box. For every detected face we compute a **face
 embedding** — a 512-number feature vector from the ArcFace model that captures the
@@ -102,27 +90,25 @@ tradeoff, which the slider in the UI lets you feel.
 
 ```
 app/
-  main.py        # FastAPI app: routes, static serving, box drawing, thumbnails
+  main.py        # FastAPI app: routes, static serving, thumbnails
   face_engine.py # detect + embed + compare (the ONLY file tied to InsightFace)
   db.py          # SQLAlchemy models (Person, Embedding) + session
   schemas.py     # pydantic response models
-  config.py      # paths, model name, threshold get/set
+  config.py      # paths, model settings, upload limits
   static/        # index.html, app.js, styles.css, demo/ sample images
 data/            # sqlite db + thumbnails (gitignored, created on first run)
-tests/           # test_face_engine.py, test_api.py
-samples/         # public-domain faces for manual/curl testing (gitignored)
+eval/            # threshold_sweep.py + the ROC / histogram PNGs
+tests/           # test_face_engine.py, test_api.py, conftest.py
 ```
 
 ## API
 
-| Method | Path                 | What it does                                |
-|--------|----------------------|---------------------------------------------|
-| POST   | `/api/enroll`        | form-data `name` + `files`; enroll a person |
-| POST   | `/api/recognize`     | form-data `file` (+ optional `threshold`)   |
-| GET    | `/api/people`        | list enrolled people                        |
-| DELETE | `/api/people/{id}`   | delete a person + their embeddings          |
-| GET/POST | `/api/config`      | read / update the match threshold           |
-| GET    | `/`                  | the single-page app                         |
+- `POST /api/enroll` — form-data `name` + `files`; enroll a person
+- `POST /api/recognize` — form-data `file` (+ optional `threshold`)
+- `GET /api/people` — list enrolled people
+- `DELETE /api/people/{id}` — delete a person and their embeddings
+- `GET /api/config` — read the default threshold and model info
+- `GET /` — the single-page app
 
 ## Testing
 
@@ -132,21 +118,32 @@ Run the automated tests:
 pytest
 ```
 
-The tests mock out the neural network (so they're fast and need no model
-download) and check the web/DB plumbing (enroll → store → recognize → match) plus
-the matching maths.
+The fast tests mock out the neural network and check the web/DB plumbing and the
+`Gallery` matching. One integration test runs the real model on the bundled demo
+images; it's marked `slow` and skipped unless you pass `--run-slow`.
 
 Quick manual smoke test with `curl` (server running):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/enroll \
-     -F "name=Albert Einstein" -F "files=@samples/personA.jpg"
-curl -X POST http://127.0.0.1:8000/api/recognize -F "file=@samples/personA_variant.jpg"  # match
-curl -X POST http://127.0.0.1:8000/api/recognize -F "file=@samples/personB.jpg"          # Unknown
+     -F "name=Albert Einstein" -F "files=@app/static/demo/einstein.jpg"
+curl -X POST http://127.0.0.1:8000/api/recognize -F "file=@app/static/demo/einstein.jpg"  # match
+curl -X POST http://127.0.0.1:8000/api/recognize -F "file=@app/static/demo/lincoln.jpg"    # Unknown
 ```
 
-When I ran this the same person came back at distance **~0.06** and a different
-person at **~0.94** (threshold 0.5) — a nice clean separation.
+The default threshold of **0.77** comes from `eval/threshold_sweep.py`, which
+scores ROC AUC **0.98** on the LFW test pairs (see below).
+
+## Threshold selection
+
+The default match threshold comes from `eval/threshold_sweep.py`, which runs the
+pipeline over the LFW test pairs, sweeps the cosine-distance cutoff, and picks the
+accuracy-optimal value (0.77, ROC AUC 0.98; 11 of 1000 pairs skipped for no
+detection). Same- and different-person distances separate cleanly, so one cutoff
+works well:
+
+![ROC curve](eval/roc_curve.png)
+![Distance histogram](eval/distance_hist.png)
 
 ## Deployment
 
@@ -162,28 +159,16 @@ hosted gallery isn't empty. To deploy:
 Storage on Spaces is ephemeral, so the gallery resets when the Space restarts —
 fine for a public demo.
 
-## Limitations (being honest)
+## Limitations
 
-- The embeddings come from a **pretrained** ArcFace model — I did not train any
-  network myself; I'm using the concepts and a good off-the-shelf model.
-- It **struggles with extreme pose, poor lighting, occlusion** (masks, hands,
-  sunglasses) and very low-resolution faces, like any single-embedding system.
-- It's a **small-gallery demo**: recognition is a linear scan over all stored
-  embeddings and the threshold isn't tuned for thousands of people.
-- Webcam results depend heavily on camera quality and lighting.
-- **This is a learning project — not for any security, surveillance or
-  access-control use.** Please don't use it to make decisions about real people.
-
-## Possible improvements
-
-- Use a heavier/GPU detector for harder images.
-- Index the gallery with **FAISS** so it scales past a linear scan.
-- Add **liveness / anti-spoofing** so a photo of a photo doesn't pass.
-- Average **multiple embeddings per person** for a more robust profile.
+- The embeddings come from a pretrained ArcFace model; I did not train it.
+- Struggles with extreme pose, poor lighting, occlusion and low-resolution faces.
+- A small-gallery demo: recognition is a linear scan, not tuned for large galleries.
+- A learning project, not for security, surveillance or access-control use.
 
 ## License & credits
 
-© 2026 **Ehina**. All rights reserved.
+Released under the MIT License (see [LICENSE](LICENSE)). © 2026 Ehina.
 
 Sample faces are public-domain historical portraits from Wikimedia Commons. The
 face detection/recognition models are pretrained weights from the InsightFace

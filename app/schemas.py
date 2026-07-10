@@ -1,9 +1,3 @@
-"""Pydantic models for API responses.
-
-Requests mostly come in as multipart form-data (files + fields), which FastAPI
-handles directly, so most of these are response shapes.
-"""
-
 from __future__ import annotations
 
 from pydantic import BaseModel

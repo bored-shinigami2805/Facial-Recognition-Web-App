@@ -34,7 +34,6 @@ log = logging.getLogger("facematch")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # create the SQLite tables on startup
     db.init_db()
     # On the hosted demo we auto-enroll a sample face in the background so the
     # gallery isn't empty on first visit. Gated behind an env var so it never
@@ -197,12 +196,7 @@ def enroll(
     files: list[UploadFile] = File(...),
     session: Session = Depends(db.get_session),
 ):
-    """Enroll a person from one or more photos.
-
-    For each photo we detect faces. If a photo has several faces we take the
-    largest one (and note it in the message) rather than failing the whole
-    upload; photos with no detectable face are skipped and reported.
-    """
+    """Enroll a person: largest face per photo, photos with no face are skipped."""
     name = name.strip()
     if not name:
         raise HTTPException(400, "Name must not be empty.")
@@ -246,7 +240,7 @@ def enroll(
         enrolled += 1
 
     if enrolled == 0:
-        # nothing usable - roll back so we don't leave an empty person behind
+        # nothing usable, roll back so we don't leave an empty person behind
         session.rollback()
         detail = "No faces could be enrolled. " + " | ".join(notes)
         raise HTTPException(422, detail)
@@ -310,7 +304,6 @@ def recognize(
 
 @app.get("/api/people", response_model=list[schemas.PersonOut])
 def list_people(session: Session = Depends(db.get_session)):
-    """List enrolled people with an image count and one thumbnail each."""
     people = session.query(db.Person).order_by(db.Person.name).all()
     out = []
     for p in people:

@@ -1,18 +1,8 @@
-"""Face pipeline: detect -> embed -> compare.
+"""Face pipeline: detect, embed and compare.
 
-This is the ONLY module that knows which face library we use underneath. The
-rest of the app talks to the small interface defined here (`detect_faces`,
-`get_embeddings`, `distance`, ...), so if I ever swapped InsightFace for
-face_recognition/dlib or DeepFace I'd only rewrite this file.
-
-Currently backed by InsightFace's `buffalo_l` pack:
-  - detection:   RetinaFace
-  - recognition: ArcFace -> 512-d embedding
-  - matching:    cosine distance between L2-normalised embeddings
-
-The model is loaded lazily the first time it's needed (the first call is slow
-because InsightFace downloads the ~300MB model pack, after that it's cached in
-~/.insightface).
+Backed by InsightFace's buffalo_l pack (RetinaFace detection + ArcFace 512-d
+embeddings, cosine distance). The ~280 MB pack downloads on first use and is
+cached in ~/.insightface. This is the only module that imports insightface.
 """
 
 from __future__ import annotations
@@ -31,13 +21,12 @@ log = logging.getLogger(__name__)
 # Cap image size to guard against decompression-bomb uploads.
 Image.MAX_IMAGE_PIXELS = 50_000_000
 
-# The heavy import (insightface) is done lazily inside _get_app() so that just
-# importing this module (e.g. in a quick unit test) stays cheap.
+# insightface is imported lazily so importing this module stays cheap.
 _app = None
 
 
 def _get_app():
-    """Load and cache the InsightFace model. CPU-only, which is fine for a demo."""
+    """Load and cache the InsightFace app (CPU only)."""
     global _app
     if _app is None:
         from insightface.app import FaceAnalysis
@@ -46,22 +35,18 @@ def _get_app():
         app = FaceAnalysis(
             name=config.MODEL_NAME,
             providers=["CPUExecutionProvider"],
-            # We only need detection + recognition, skip the extra models
-            # (landmarks/age/gender) to keep it lighter and faster.
             allowed_modules=["detection", "recognition"],
         )
-        app.prepare(ctx_id=-1, det_size=(640, 640))  # ctx_id=-1 -> CPU
+        app.prepare(ctx_id=-1, det_size=(640, 640))
         _app = app
     return _app
 
 
 @dataclass
 class DetectedFace:
-    """One detected face: pixel bounding box + its 512-d embedding."""
-
     bbox: tuple[int, int, int, int]   # (x1, y1, x2, y2)
     embedding: np.ndarray             # L2-normalised, shape (512,)
-    det_score: float                  # detector confidence 0..1
+    det_score: float
 
     @property
     def area(self) -> int:
@@ -70,31 +55,22 @@ class DetectedFace:
 
 
 def load_image(data: bytes) -> np.ndarray:
-    """Decode raw image bytes into an RGB numpy array.
-
-    Uses Pillow (not cv2.imdecode) so we can also apply EXIF orientation - phone
-    photos are often rotated and this fixes that. Raises ValueError on garbage.
-    """
+    """Decode image bytes to an RGB numpy array, applying EXIF rotation."""
     try:
         img = Image.open(io.BytesIO(data))
-        img = ImageOps.exif_transpose(img)   # respect phone rotation
+        img = ImageOps.exif_transpose(img)
         img = img.convert("RGB")
     except Image.DecompressionBombError as exc:
         raise ValueError("Image is too large to process.") from exc
-    except Exception as exc:  # Pillow raises a bunch of different errors
+    except Exception as exc:
         raise ValueError("Could not read image file (is it a valid image?)") from exc
     return np.array(img)
 
 
 def detect_faces(rgb_image: np.ndarray) -> list[DetectedFace]:
-    """Detect all faces in an RGB image and compute an embedding for each.
-
-    Returns a list sorted largest-face-first, which is handy for the enroll
-    flow where we want "the main subject" of the photo.
-    """
+    """Detect faces in an RGB image, largest first, each with its embedding."""
     app = _get_app()
-    # InsightFace expects BGR (OpenCV convention); our array is RGB.
-    bgr = rgb_image[:, :, ::-1]
+    bgr = rgb_image[:, :, ::-1]  # insightface expects BGR
     faces = app.get(bgr)
 
     results: list[DetectedFace] = []
@@ -112,11 +88,7 @@ def detect_faces(rgb_image: np.ndarray) -> list[DetectedFace]:
 
 
 def distance(a: np.ndarray, b: np.ndarray) -> float:
-    """Cosine distance between two embeddings (0 = identical, 2 = opposite).
-
-    Embeddings from InsightFace are already L2-normalised, so cosine similarity
-    is just their dot product and cosine distance is 1 - that.
-    """
+    """Cosine distance between two L2-normalised embeddings (0 = identical)."""
     a = np.asarray(a, dtype=np.float32)
     b = np.asarray(b, dtype=np.float32)
     return float(1.0 - np.dot(a, b))
@@ -143,8 +115,7 @@ class Gallery:
         return int(self._person_ids.shape[0])
 
     def match(self, query: np.ndarray) -> tuple[int | None, float]:
-        """Nearest enrolled (person_id, cosine distance), using each person's
-        closest embedding. Returns (None, inf) for an empty gallery."""
+        """Nearest enrolled (person_id, distance) using each person's closest embedding."""
         if len(self) == 0:
             return None, float("inf")
         q = np.asarray(query, dtype=np.float32)
@@ -158,19 +129,14 @@ class Gallery:
 
 
 def confidence_from_distance(d: float) -> float:
-    """Turn a cosine distance into a friendly 0..1 'confidence' for the UI.
-
-    This is just a linear-ish mapping for display, not a real probability -
-    distance is what actually drives the accept/reject decision.
-    """
+    """Map a distance to a 0..1 display confidence (not a real probability)."""
     return round(max(0.0, min(1.0, 1.0 - d / 2.0)), 3)
 
 
 def embedding_to_bytes(emb: np.ndarray) -> bytes:
-    """Serialise an embedding to raw float32 bytes for storage in SQLite."""
+    """Serialise an embedding to raw float32 bytes for SQLite storage."""
     return np.asarray(emb, dtype=np.float32).tobytes()
 
 
 def embedding_from_bytes(blob: bytes) -> np.ndarray:
-    """Inverse of embedding_to_bytes."""
     return np.frombuffer(blob, dtype=np.float32)
